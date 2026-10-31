@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: myket_db
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME:-myket_reviews_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init_reviews.sql:/docker-entrypoint-initdb.d/init.sql
+
+  crawler:
+    build: .
+    container_name: myket_scraper
+    depends_on:
+      - db
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+    volumes:
+      - ./logs:/app/logs
+
+volumes:
+  postgres_data:
