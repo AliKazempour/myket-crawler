@@ -13,23 +13,33 @@ from itemadapter import ItemAdapter
 #         return item
 
 import psycopg2
-from scrapy.utils.project import get_project_settings
+
 
 class PostgresPipeline:
-    def open_spider(self, spider):
-        settings = spider.settings
-        self.conn = psycopg2.connect(
-            host=settings.get("DB_HOST", "localhost"),
-            port=settings.getint("DB_PORT", 5432),
-            dbname=settings.get("DB_NAME", "myket_reviews_db"),
-            user=settings.get("DB_USER", "postgres"),
-            password=settings.get("DB_PASSWORD", "postgres")
-        )
-        self.cur = self.conn.cursor()
-        spider.logger.info("Connected to PostgreSQL successfully.")
 
-    def process_item(self, item, spider):
-        query = """
+  def __init__(self, db_settings):
+    self.db_settings = db_settings
+    self.conn = None
+    self.cur = None
+
+  @classmethod
+  def from_crawler(cls, crawler):
+    settings = crawler.settings
+    db_settings = {
+        "host": settings.get("DB_HOST", "localhost"),
+        "port": settings.getint("DB_PORT", 5432),
+        "dbname": settings.get("DB_NAME", "myket_reviews_db"),
+        "user": settings.get("DB_USER", "postgres"),
+        "password": settings.get("DB_PASSWORD", "postgres"),
+    }
+    return cls(db_settings)
+
+  def open_spider(self):
+    self.conn = psycopg2.connect(**self.db_settings)
+    self.cur = self.conn.cursor()
+
+  def process_item(self, item):
+    query = """
             INSERT INTO myket_reviews (
                 comment_id, package_name, author_name, rating,
                 comment_text, comment_date, likes_count, dislikes_count, reply_text
@@ -40,7 +50,9 @@ class PostgresPipeline:
                 reply_text = EXCLUDED.reply_text,
                 updated_at = CURRENT_TIMESTAMP;
         """
-        self.cur.execute(query, (
+    self.cur.execute(
+        query,
+        (
             item["comment_id"],
             item["package_name"],
             item["author_name"],
@@ -49,14 +61,14 @@ class PostgresPipeline:
             item["comment_date"],
             item["likes_count"],
             item["dislikes_count"],
-            item.get("reply_text")
-        ))
-        self.conn.commit()
-        return item
+            item.get("reply_text"),
+        ),
+    )
+    self.conn.commit()
+    return item
 
-    def close_spider(self, spider):
-        if hasattr(self, "cur") and self.cur:
-            self.cur.close()
-        if hasattr(self, "conn") and self.conn:
-            self.conn.close()
-        spider.logger.info("PostgreSQL connection closed.")
+  def close_spider(self):
+    if self.cur:
+      self.cur.close()
+    if self.conn:
+      self.conn.close()
